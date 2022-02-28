@@ -11,16 +11,19 @@
 
 package org.eclipse.tracecompass.examples.core.analysis;
 
-import java.util.Objects;
+import static org.eclipse.tracecompass.common.core.NonNullUtils.checkNotNull;
+
+import java.util.ArrayList;
+import java.util.Collection;
 
 import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.tracecompass.statesystem.core.ITmfStateSystemBuilder;
+import org.eclipse.tracecompass.statesystem.core.exceptions.StateSystemDisposedException;
+import org.eclipse.tracecompass.statesystem.core.interval.ITmfStateInterval;
 import org.eclipse.tracecompass.tmf.core.event.ITmfEvent;
-import org.eclipse.tracecompass.tmf.core.event.aspect.TmfCpuAspect;
 import org.eclipse.tracecompass.tmf.core.statesystem.AbstractTmfStateProvider;
 import org.eclipse.tracecompass.tmf.core.statesystem.ITmfStateProvider;
 import org.eclipse.tracecompass.tmf.core.trace.ITmfTrace;
-import org.eclipse.tracecompass.tmf.core.trace.TmfTraceUtils;
 
 /**
  * An example of a simple state provider for a simple state system analysis
@@ -32,6 +35,13 @@ import org.eclipse.tracecompass.tmf.core.trace.TmfTraceUtils;
  * @author Geneviève Bastien
  */
 public class ExampleStateProvider extends AbstractTmfStateProvider {
+
+    private boolean intervalWritten = false;
+    private long firstTimestamp = 1641396521146040576L;
+    private long secondTimestamp = 1641396521146041344L;
+    private double intervalValue = 10.0;
+    private int quarkToQuery;
+
 
     private static final @NonNull String PROVIDER_ID = "org.eclipse.tracecompass.examples.state.provider"; //$NON-NLS-1$
     private static final int VERSION = 0;
@@ -58,29 +68,50 @@ public class ExampleStateProvider extends AbstractTmfStateProvider {
 
     @Override
     protected void eventHandle(ITmfEvent event) {
+        if(!intervalWritten) {
+            final ITmfStateSystemBuilder ss = checkNotNull(getStateSystemBuilder());
+            int level0 = ss.getQuarkAbsoluteAndAdd("0");
+            int level1 = ss.getQuarkRelativeAndAdd(level0, "1");
+            int level2 = ss.getQuarkRelativeAndAdd(level1, "2");
+            int level3 = ss.getQuarkRelativeAndAdd(level2, "3");
+            quarkToQuery = ss.getQuarkRelativeAndAdd(level3, "quarkToQuery");
+            ss.modifyAttribute(firstTimestamp, intervalValue, quarkToQuery);
+            ss.modifyAttribute(secondTimestamp, 0.0, quarkToQuery);
+            intervalWritten = true;
+        }
+    }
 
-        /**
-         * Do what needs to be done with this event, here is an example that
-         * updates the CPU state and TID after a sched_switch
-         */
-        if (event.getName().equals("sched_switch")) { //$NON-NLS-1$
+    @Override
+    public void done() {
+        final ITmfStateSystemBuilder ss = checkNotNull(getStateSystemBuilder());
+        //Querying states one by one
 
-            final long ts = event.getTimestamp().getValue();
-            Long nextTid = event.getContent().getFieldValue(Long.class, "next_tid"); //$NON-NLS-1$
-            Integer cpu = TmfTraceUtils.resolveIntEventAspectOfClassForEvent(event.getTrace(), TmfCpuAspect.class, event);
-            if (cpu == null || nextTid == null) {
-                return;
+        try {
+            System.out.println("First single query");
+            ITmfStateInterval interval1 = ss.querySingleState(firstTimestamp - 1, quarkToQuery);
+            System.out.println("First interval : " + interval1);
+            System.out.println("Second single query");
+            ITmfStateInterval interval2 = ss.querySingleState(firstTimestamp + 1, quarkToQuery);
+            System.out.println("Second interval : " + interval2);
+            System.out.println("Third single query");
+            ITmfStateInterval interval3 = ss.querySingleState(secondTimestamp + 1, quarkToQuery);
+            System.out.println("Third interval : " + interval3);
+
+
+            System.out.println("Now querying with query2D()");
+            Collection<Integer> quarksToQuery = new ArrayList<>();
+            quarksToQuery.add(quarkToQuery);
+            Iterable<ITmfStateInterval> intervals = ss.query2D(quarksToQuery, firstTimestamp - 1, secondTimestamp + 1);
+            System.out.println("Starting to print intervals");
+            for(ITmfStateInterval interval : intervals) {
+                System.out.println(interval);
             }
+            System.out.println("Finished to print intervals");
 
-            ITmfStateSystemBuilder ss = Objects.requireNonNull(getStateSystemBuilder());
-            int quark = ss.getQuarkAbsoluteAndAdd("CPUs", String.valueOf(cpu)); //$NON-NLS-1$
-            // The main quark contains the tid of the running thread
-            ss.modifyAttribute(ts, nextTid, quark);
 
-            // The status attribute has an integer value
-            int statusQuark = ss.getQuarkRelativeAndAdd(quark, "Status"); //$NON-NLS-1$
-            Integer value = (nextTid > 0 ? 1 : 0);
-            ss.modifyAttribute(ts, value, statusQuark);
+        } catch (StateSystemDisposedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
         }
     }
 

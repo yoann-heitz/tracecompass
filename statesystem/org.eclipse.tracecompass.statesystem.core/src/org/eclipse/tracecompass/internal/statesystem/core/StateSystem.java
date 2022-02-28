@@ -602,6 +602,15 @@ public class StateSystem implements ITmfStateSystemBuilder {
                 "ts", t, //$NON-NLS-1$
                 "attribute", attributeQuark)) { //$NON-NLS-1$
             ITmfStateInterval ret = transState.getIntervalAt(t, attributeQuark);
+
+
+            if(getFullAttributePath(attributeQuark).equals("0/1/2/3/quarkToQuery") && (t == 1641396521146040576L - 1L || t == 1641396521146040576L + 1L || t == 1641396521146041344L + 1L)) {
+                if(ret == null) {
+                    System.out.println("Interval not in transient state, looking into backend");
+                }else {
+                    System.out.println("Interval in transient state");
+                }
+            }
             if (ret == null) {
                 /*
                  * The transient state did not have the information, let's look
@@ -662,8 +671,14 @@ public class StateSystem implements ITmfStateSystemBuilder {
             throw new IndexOutOfBoundsException();
         }
 
+
         Iterable<@NonNull ITmfStateInterval> transStateIterable = transState.query2D(quarks, timeCondition);
         Iterable<@NonNull ITmfStateInterval> backendIterable = backend.query2D(quarkCondition, timeCondition, reverse);
+        Object[] quarksToArray = quarks.toArray();
+        if(getFullAttributePath((int)quarksToArray[0]).equals("0/1/2/3/quarkToQuery")) {
+            System.out.println("Number of intervals from transient state : " + Iterables.size(transStateIterable));
+            System.out.println("Number of intervals from backend : " + Iterables.size(backendIterable));
+        }
 
         return Iterables.concat(transStateIterable, backendIterable);
     }
